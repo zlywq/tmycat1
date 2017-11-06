@@ -1,0 +1,193 @@
+﻿
+/*
+SELECT User, Host, Password FROM mysql.user;
+GRANT ALL PRIVILEGES ON *.* TO 'user1'@'%' IDENTIFIED BY 'aaa' WITH GRANT OPTION; 
+GRANT ALL PRIVILEGES ON *.* TO 'user1'@'localhost' IDENTIFIED BY 'aaa' WITH GRANT OPTION; 
+mysql --host=localhost --port=3306 -u user1 -p
+*/
+
+
+#DROP DATABASE IF EXISTS mycatdbtX;
+CREATE DATABASE mycatdbtX DEFAULT CHARSET utf8 COLLATE utf8_general_ci;
+use mycatdbtX;
+
+DROP DATABASE IF EXISTS mycatAX;
+CREATE DATABASE mycatAX DEFAULT CHARSET utf8 COLLATE utf8_general_ci;
+use mycatAX;
+
+/*
+show  tables;
+
+DROP TABLE IF EXISTS `TblPartByMod` ;
+DROP TABLE IF EXISTS TblPartByHash ;
+DROP TABLE IF EXISTS TblPartByHashKey ;
+
+DROP TABLE IF EXISTS SimpleAccount ;
+DROP TABLE IF EXISTS SimpleAccountTransferState ;
+
+DROP TABLE IF EXISTS `P5AccountTransferRequest` ;
+DROP TABLE IF EXISTS `P5AccountYuE` ;
+DROP TABLE IF EXISTS `P5AccountJiFen` ;
+DROP TABLE IF EXISTS `P5AccountYuEChangeState` ;
+DROP TABLE IF EXISTS `P5AccountJiFenChangeState` ;
+
+--------
+
+TRUNCATE TABLE  `TblPartByMod` ;
+TRUNCATE TABLE  TblPartByHash ;
+TRUNCATE TABLE  TblPartByHashKey ;
+
+SELECT * FROM TblPartByMod;
+SELECT * FROM TblPartByHash;
+SELECT * FROM TblPartByHashKey;
+
+SELECT count(*) FROM TblPartByMod;
+SELECT count(*) FROM TblPartByHash;
+SELECT count(*) FROM TblPartByHashKey;
+--------
+
+SELECT * FROM SimpleAccount;
+SELECT * FROM SimpleAccountTransferState;
+
+TRUNCATE TABLE  `SimpleAccount` ;
+TRUNCATE TABLE  SimpleAccountTransferState ;
+
+TRUNCATE TABLE  `P5AccountTransferRequest` ;
+TRUNCATE TABLE  P5AccountYuE ;
+TRUNCATE TABLE  `P5AccountJiFen` ;
+TRUNCATE TABLE  P5AccountYuEChangeState ;
+TRUNCATE TABLE  `P5AccountJiFenChangeState` ;
+
+
+*/
+
+
+CREATE TABLE `TblPartByMod` (
+  `tblId` BIGINT NOT NULL ,
+  `name` varchar(100) not null ,
+  PRIMARY KEY (`tblId`)
+) ENGINE=InnoDB;
+
+CREATE TABLE `TblPartByHash` (
+  `tblId` BIGINT NOT NULL ,
+  `name` varchar(100) not null ,
+  PRIMARY KEY (`tblId`)
+) ENGINE=InnoDB;
+
+CREATE TABLE `TblPartByHashKey` (
+  `keyId` varchar(100) not null ,
+  PRIMARY KEY (`keyId`)
+) ENGINE=InnoDB;
+
+
+
+
+
+
+
+CREATE TABLE `SimpleAccount` (
+  `userId` BIGINT NOT NULL,
+  `accountType` varchar(50) NOT NULL DEFAULT '',
+  `amount` BIGINT NOT NULL,
+  `rowver` BIGINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`userId`,`accountType`)
+) ;
+CREATE TABLE `SimpleAccountTransferState` (
+  `atsId` BIGINT NOT NULL,
+  `idForPart` BIGINT NOT NULL,
+  `state` varchar(50) NOT NULL DEFAULT '',
+  `fromUserId` BIGINT NOT NULL,
+  `fromAccountType` varchar(50) NOT NULL DEFAULT '',
+  `toUserId` BIGINT NOT NULL,
+  `toAccountType` varchar(50) NOT NULL DEFAULT '',
+  `amount` BIGINT NOT NULL,
+  `rowver` BIGINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`atsId`)
+) ;
+#----
+CREATE TABLE `P5AccountTransferRequest` (
+  `atrId` BIGINT NOT NULL,
+  `fromUserId` BIGINT NOT NULL,
+  `toUserId` BIGINT NOT NULL,
+  `state` varchar(50) NOT NULL DEFAULT '',
+  `detailJson` varchar(500) NOT NULL DEFAULT '',
+  `shuoming` varchar(500) DEFAULT '',
+  `amount` BIGINT NOT NULL,
+  `rowver` BIGINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`atrId`)
+) ;
+CREATE TABLE `P5AccountYuE` (
+  `userId` BIGINT NOT NULL,
+  `amount` BIGINT NOT NULL,
+  `rowver` BIGINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`userId`)
+) ;
+CREATE TABLE `P5AccountJiFen` (
+  `userId` BIGINT NOT NULL,
+  `amount` BIGINT NOT NULL,
+  `rowver` BIGINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`userId`)
+) ;
+#  here acsId store atrId
+CREATE TABLE `P5AccountYuEChangeState` (
+  `acsId` BIGINT NOT NULL,
+  `idForPart` BIGINT NOT NULL,
+  `state` varchar(50) NOT NULL DEFAULT '',
+  `amount` BIGINT NOT NULL,
+  `rowver` BIGINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`acsId`)
+) ;
+#  here acsId store atrId
+CREATE TABLE `P5AccountJiFenChangeState` (
+  `acsId` BIGINT NOT NULL,
+  `idForPart` BIGINT NOT NULL,
+  `state` varchar(50) NOT NULL DEFAULT '',
+  `amount` BIGINT NOT NULL,
+  `rowver` BIGINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`acsId`)
+) ;
+
+
+
+/* --------in try mycat below------------------------- */
+
+具体的配置参见  src\main\resources\mycat\*.xml
+
+//bighost1
+CREATE DATABASE mycatdbT0 DEFAULT CHARSET utf8 COLLATE utf8_general_ci;
+CREATE DATABASE mycatdbT2 DEFAULT CHARSET utf8 COLLATE utf8_general_ci;
+
+//bighost2
+CREATE DATABASE mycatdbT1 DEFAULT CHARSET utf8 COLLATE utf8_general_ci;
+CREATE DATABASE mycatdbT3 DEFAULT CHARSET utf8 COLLATE utf8_general_ci;
+
+
+use mycatdbT0;
+User表有多个index，暂且只放在一个dataNode中，以后要么把n个索引弄成1或n个全局表，要么另起一个小系统来解决从email或mobile映射到userId的问题。
+
+其他几个表都是所有dataNode中都有，如 users,authorities,persistent_logins,BbsPost
+use mycatdbT0;
+use mycatdbT2;
+use mycatdbT1;
+use mycatdbT3;
+
+目前按这样的配置基本达到代码不用修改，当然这种设计还不够好。
+
+
+
+/* --------in try mycat above ------------------------- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

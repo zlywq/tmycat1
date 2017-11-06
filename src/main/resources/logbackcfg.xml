@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration scan="true" scanPeriod="60 seconds">
+
+    <property name="PtnGfConsole" value="%-4relative [%thread] %-5level %logger{35} - %msg %n" />
+    <property name="PtnGfFile"    value="%-4relative [%thread] %-5level %logger{35} - %msg%n" />
+    <!-- 格式化输出：%d表示日期，%thread表示线程名，%-5level：级别从左显示5个字符宽度%msg：日志消息，%n是换行符
+     参考 logback-1.2.3/docs/manual/layouts.html
+    -->
+    <property name="PatternColor" value="${-%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(${LOG_LEVEL_PATTERN:-%5p}) %clr(${PID:- }){magenta} %clr(---){faint} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n${LOG_EXCEPTION_CONVERSION_WORD:-%wEx}}" />
+    <property name="PtnColrSprBt" value="%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(${LOG_LEVEL_PATTERN:-%5p}) %clr(${PID:- }){magenta} %clr(---){faint} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n${LOG_EXCEPTION_CONVERSION_WORD:-%wEx}" />
+    <property name="PtnFileSprBt" value="%d{yyyy-MM-dd HH:mm:ss.SSS} ${LOG_LEVEL_PATTERN:-%5p} ${PID:- } --- [%t] %-40.40logger{39} : %m%n${LOG_EXCEPTION_CONVERSION_WORD:-%wEx}" />
+
+
+    <property name="PATTERN2" value="%d{yyyyMMdd_HHmmss.SSS} [%thread] %-5level %logger{0} - %msg%n" />
+    <property name="PATTERN3" value="%d{yyyyMMdd_HHmmss.SSS} [%thread] %-5level %logger - %msg%n" />
+    <property name="PtnSimple" value="%msg %rEx %n" />
+    <property name="PtnShort" value="%d{yyyyMMdd_HHmmss.SSS} %msg %rEx %n" />
+    <property name="PtnBasic" value="%d{yyyyMMdd_HHmmss.SSS} [%thread] %logger{0} - %msg%n" />
+    <property name="PtnExt" value="%d{yyyyMMdd_HHmmss.SSS} [%thread] %-5level %file:%line - %msg%n" />
+    <property name="PtnDetail" value="%d{yyyyMMdd_HHmmss.SSS} [%thread] %-5level %class.%method %file:%line - %msg%n %rEx" />
+
+
+    <property name="PtnConsole" value="${PtnExt}" />
+    <property name="PtnFile" value="${PtnDetail}" />
+
+
+    <property name="theLogHome2" value="${user.dir}/../log" />
+    <property name="theLogHome3" value="./log" />
+    <property name="theLogHome" value="${theLogHome3}" />
+
+    <contextListener class="ch.qos.logback.classic.jul.LevelChangePropagator">
+        <resetJUL>true</resetJUL>
+    </contextListener>
+
+    <!-- To enable JMX Management -->
+    <jmxConfigurator/>
+
+    <appender name="console" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${PtnConsole}</pattern>
+            <charset>utf8</charset>
+        </encoder>
+    </appender>
+
+
+    <appender name="ge_warn" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>WARN</level>
+        </filter>
+
+        <file>${theLogHome}/logwarn.txt</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <!-- rollover daily -->
+            <fileNamePattern>${theLogHome}/logwarn-%d{yyyyMMdd}.%i.txt</fileNamePattern>
+            <maxFileSize>100MB</maxFileSize>
+            <maxHistory>14</maxHistory>
+            <totalSizeCap>20GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${PtnFile}</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="ge_info" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>INFO</level>
+        </filter>
+
+        <file>${theLogHome}/loginfo.txt</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <!-- rollover daily -->
+            <fileNamePattern>${theLogHome}/loginfo-%d{yyyyMMdd}.%i.txt</fileNamePattern>
+            <maxFileSize>100MB</maxFileSize>
+            <maxHistory>14</maxHistory>
+            <totalSizeCap>20GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${PtnFile}</pattern>
+        </encoder>
+    </appender>
+
+
+    <appender name="ge_debug" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>DEBUG</level>
+        </filter>
+
+        <file>${theLogHome}/logdebug.txt</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <!-- rollover daily -->
+            <fileNamePattern>${theLogHome}/logdebug-%d{yyyyMMdd}.%i.txt</fileNamePattern>
+            <maxFileSize>100MB</maxFileSize>
+            <maxHistory>14</maxHistory>
+            <totalSizeCap>20GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${PtnFile}</pattern>
+        </encoder>
+    </appender>
+
+
+    <!-- show parameters for hibernate sql 专为 Hibernate 定制 -->
+    <logger name="org.hibernate.type.descriptor.sql.BasicBinder"  level="TRACE" />
+    <logger name="org.hibernate.type.descriptor.sql.BasicExtractor"  level="DEBUG" />
+    <logger name="org.hibernate.SQL" level="DEBUG" />
+    <logger name="org.hibernate.engine.QueryParameters" level="DEBUG" />
+    <logger name="org.hibernate.engine.query.HQLQueryPlan" level="DEBUG" />
+    <!--myibatis log configure-->
+    <logger name="com.apache.ibatis" level="TRACE"/>
+    <logger name="java.sql.Connection" level="DEBUG"/>
+    <logger name="java.sql.Statement" level="DEBUG"/>
+    <logger name="java.sql.PreparedStatement" level="DEBUG"/>
+
+	<!--<logger name="org.hibernate" level="debug"/> -->
+    <logger name="g1.app1" level="debug"/>
+    
+    <!-- 
+		要想控制mybatis的debug时显示的sql语句，此代码OK。debug时能够打印出来。
+		参考 http://stackoverflow.com/questions/21718097/how-to-configure-logback-for-mybatis-to-print-my-sql
+		而如下的不行。
+    <logger name="org.apache.ibatis">
+		<level value="info" />
+	</logger>
+	<logger name="com.ibatis">
+		<level value="info" />
+	</logger>
+	<logger name="java.sql">
+		<level value="info" />
+	</logger>    
+    -->
+    <logger name="g1.dao.mapperIf" level="debug"/>
+    
+	
+    
+    <logger name="org.springframework.core">
+		<level value="info" />
+	</logger>
+	
+	<logger name="org.springframework.beans">
+		<level value="info" />
+	</logger>
+	
+	<logger name="org.springframework.context">
+		<level value="info" />
+	</logger>
+
+	<logger name="org.springframework.web">
+		<level value="info" />
+	</logger>
+         
+    <!-- 注意目前的效果是， ge_debug对应的文件依然要被写入，只是DEBUG级别的不写，写的是INFO级别及其以上的。  -->
+    <root level="INFO">
+        <appender-ref ref="console"/>
+     	<appender-ref ref="ge_warn" />
+        <!--
+     	<appender-ref ref="ge_info" />
+     	-->
+     	<appender-ref ref="ge_debug" />
+    </root>
+</configuration>
