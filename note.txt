@@ -7,32 +7,35 @@ Account(userId,accountType,amount,rowver) //accountType=YuE,DaiJinQuan
 AccountTransferState(acsId,idForPart,state,fromUserId,fromAcntType,toUserId,toUserAcntType,amount,crtTime,rowver)
     注意AccountChangeState有2份记录，只是idForPart不同（注意其他相同，如acsId等相同），分别为fromUserId和toUserId。这样与Account是一一对应的，并且分区方式相同，这样方便事务处理。
 
-1,在事务中 减少fromAccount 并 新建AccountTransferState(idForPart=fromUserId,state=didOut)。
-    并且在事务前预先生成acsId，并发送消息到队列，消息内容包括acsId,fromUserId,toUserId,msgType=checkTransfer(还可以msgType=newTransfer，相当于异步进行转账操作)等。
-    另一方面，用户（如fromUser），可以查询一个AccountTransferState的列表，按时间从晚到早排序。如果哪条记录未完成，可以点按钮触发操作。
-    综上2种情况，都可以拿到acsId和fromUserId
-1A，先检查fromAccount的amount，如果不够，则直接返回报错。
-    如果够，才执行步骤1，并且注意 减少fromAccount 时要使用CAS处理，比如 set rowver=OldRowver+1 where rowver=OldRowver，这个CAS处理不通过也是直接报错 或者可以再试一次。
-2,在事务中 增加toAccount 并 新建AccountChangeState(idForPart=toUserId,state=finish)
-3,修改idForPart=fromUserId的AccountTransferState，使state=finish。
+先分析流程中的正常情况。
+0,预先生成acsId，并发送消息到队列，消息内容包括AccountTransferState的几乎所有字段 以及 msgType=checkTransfer(在别的情况下还可以msgType=newTransfer，相当于异步进行转账操作)等。
+    利用消息队列是自动处理，还可以人工干预。比如，用户（这里指fromUser）可以查询一个AccountTransferState的列表，按时间从晚到早排序。如果哪条记录未完成，可以点按钮触发操作。
+    综上2种情况，在预先生成acsId后，都有办法拿到这个acsId以及其他相关数据（如fromUserId等等）。
+1,在单机事务中,先检查fromAccount的amount，
+    如果不够，则直接返回，整个大事务以fail结束。
+    如果够，减少fromAccount 并 新建AccountTransferState(acsId为预先生成,idForPart=fromUserId,state=didOut)。
+        并且注意 减少fromAccount 时要使用CAS处理，比如 set rowver=OldRowver+1 where rowver=OldRowver，这个CAS处理不通过时可以直接报错，也可以再试一次。
+2,在单机事务中 增加toAccount 并 新建AccountChangeState(idForPart=toUserId,state=finish)
+3,在单机事务中 修改idForPart=fromUserId的AccountTransferState，使state=finish。
 
-由于在1，2，3中每一步都可能失败或异常，研究处理失败情况。
-    由于可以拿到具体的id，所以先分2种情况，一种是完全新增，此时对应上面的步骤，简单。
-    一种是某个步骤失败后，通过某种方式重启这个转账流程，在下面讨论。
+再分析流程中的异常情况。
+    在1，2，3中每一步都可能出异常。（第0步出异常，处理很简单，参考下面的1B步骤即可）
+    由于第0步存在，总有办法拿到具体的id和必要数据。从而可以分析检查重做的过程，如下。
+1B,在单机事务中,使用acsId和idForPart=fromUserId查询AccountTransferState记录，
+    如果不存在，说明第1步的事务由于各种原因失败，从而是整个流程失败，不用管了。（另外也可以考虑再次转账，不过在这里暂不分析，以避免引入一些不必要的复杂性）
+    如果存在，看AccountTransferState记录内容，
+        如果state=finish，则说明是在第3步事务完成后出了异常，此时整个流程已经成功完成，不用在这里做什么。
+        如果state=didOut，说明第1步已经完成，由下一步来处理，见2B.
+        如果state=其他，按业务逻辑分析不应该出现，给开发人员报bug。
+2B, 在单机事务中,使用acsId和idForPart=toUserId查询AccountTransferState记录，
+    如果不存在，说明第2步尚未开始或未能成功开始，只需简单做前面的2、3步中的内容
+    如果存在，看AccountTransferState记录内容，
+        如果state=finish，说明第2步已经成功完成，只需简单做前面的第3步中的内容
+        如果state=其他，按业务逻辑分析不应该出现，给开发人员报bug。
+3B,同前面的第3步
+    这步比较简单。根据上面的分析，如果能够到这步，只有当前面2步都成功时才到。所以无需判断什么条件，只需简单执行第3步的内容即可。
 
-1B,使用acsId和idForPart=fromUserId查询AccountTransferState记录，
-    如果不存在，说明第1步的事务由于各种原因失败，从而是整个流程失败，不用管了。
-    如果存在，看AccountTransferState记录内容，
-        如果state=finish，则说明是在第3步事务完成后出了异常，此时整个流程已经成功完成，不用做什么，只需消费掉这条消息即可。
-        如果state=didOut，说明第1步已经完成，由第2步来处理，见2B.
-        如果state=cancel 或 其他，按业务逻辑分析不应该出现，给开发人员报错提醒是bug。（也许别的流程用得着cancel状态，但是这里暂且用不着）
-2B, 使用acsId和idForPart=toUserId查询AccountTransferState记录，
-    如果不存在，说明第2步尚未开始或未能成功开始，简单做2，3步
-    如果存在，看AccountTransferState记录内容，
-        如果state=finish，说明第2步已经成功完成，简单做第3步
-        如果state=其他，按业务逻辑分析不应该出现，给开发人员报错提醒是bug。
-3B,修改idForPart=fromUserId的AccountTransferState，使state=finish。
-    这步比较简单，根据上面的分析能够到这步，只有前面2步都成功时才到，所以只需简单执行第3步。然后消费掉当前消息。
+
 ----------
 
 另外，每步操作可能需要记日志，万一编程出错，可以根据日志人工回滚。
@@ -135,21 +138,25 @@ AccountChangeState(acsId,userIdForPart,atrId,state,crtTime,rowver, amount)
 考虑用户使用积分和余额付款给商家。积分和余额在不同的库中。这样可以抽象成不同的服务了。
 (暂时只考虑一个用户到一个商家，而不是1到多的情况)
 
-这里AccountTransferRequest与2个Account一般是3片。
+这里AccountTransferRequest与4个Account一般是5片。
 //User(userId,...)
 AccountTransferRequest(atrId,fromUserId,toUserId,state,crtTime,detailJson,shuoming,rowver)//detailJson 包括 多条记录，每条记录有 AccountType, amount
 AccountYuE(userId,amount,rowver)
 AccountJiFen(userId,amount,rowver)
-AccountYuEChangeState  (acsId,userIdForPart,atrId,state,crtTime,rowver, amount)
-AccountJiFenChangeState(acsId,userIdForPart,atrId,state,crtTime,rowver, amount)
-    注意AccountXyzChangeState有2份记录，分别与2个Account对应，且分区方式相同，这样便于事务处理
+AccountYuEChangeState  (userIdForPart,atrId,state,crtTime,rowver, amount)
+AccountJiFenChangeState(userIdForPart,atrId,state,crtTime,rowver, amount)
+    注意AccountXyzChangeState有2份记录，分别与2个Account对应，且分区方式相同，这样保证单机事务
+
 初次执行所有事务时(第一次也称创建阶段)
 1,建立转账请求 AccountTransferRequest(state=Init)
-    在事务前预先生成atrId,(还考虑先保存到导致这个动作的根动作上，这样便于追查状态)。第一次执行暂且不用分布式锁，因为atrId是新生成的，没有别的地方争用。除非是锁根动作的id。
+    在事务前预先生成atrId,(还考虑先保存到导致这个动作的根动作上，这样便于追查状态)。
+    第一次执行暂且不用分布式锁，因为atrId是新生成的，没有别的地方争用。除非是锁根动作的id。
     发送延时消息到队列(1minute,msgType=checkTransfer)。消息内容包括AccountTransferRequest的几乎所有字段，重点的有atrId,fromUserId,msgType=checkTransfer(当异步进行转账操作，还可以msgType=newTransfer)。
     另一方面，用户（这里是fromUser），可以by fromUserId查询一个AccountTransferRequest的列表，按时间从晚到早排序。如果哪条记录未完成，可以点按钮触发操作。（或者从某个根动作得到atrId，并进一步取到数据）
     综上2种情况，都可以拿到atrId和fromUserId。
-    另外，toUser暂时认为没有查询AccountTransferRequest的列表的必要。一方面，没转账成功，toUser不必知道这个请求状态的中间过程(毕竟现在的电商网站也没有提供这种查询)。另一方面，还可以查AccountChangeState作为列表，至于join问题，可以冗余几个字段或一个json字符串字段，或者等这个数据流转到异构数据库来解决查询问题。
+    另外，toUser暂时认为没有查询AccountTransferRequest的列表的必要。
+        一方面，没转账成功，toUser不必知道这个请求状态的中间过程(毕竟现在的电商网站也没有提供这种查询)。
+        另一方面，还可以查AccountChangeState作为列表，至于join问题，可以冗余几个字段或一个json字符串字段，或者等这个数据流转到异构数据库来解决查询问题。
 2,处理 AccountJiFen 的转出部分逻辑
     先检查fromAccountJiFen的amount够不够，
         够 ，则 减少fromAccountJiFen 并 新建AccountJiFenChangeState(fromUserId,atrId,state=didOut,atrDetailJson~)
@@ -157,17 +164,19 @@ AccountJiFenChangeState(acsId,userIdForPart,atrId,state,crtTime,rowver, amount)
             此时需要回滚，先发送延时消息到队列，消息内容包括AccountTransferRequest的几乎所有字段，重点的有atrId,msgType=toRollback。
                 如果或就算在发送消息前出异常停掉。下次通过消息进入检查处理流程，会重试步骤2，可以走够与不够2个分支，但不会导致数据不一致等错误。
             然后修改AccountTransferRequest的state=toRollback，并修改shuoming字段为失败原因，这里是积分不足。然后返回失败原因提示用户或者发消息通知用户。
-            然后执行B处的回滚逻辑，而不是执行下面的逻辑。考虑到通用性（以及可能的并发性--最好别并发，由于前面描述在重试时可能走不同分支），B处的回滚逻辑包括多处数据的处理。
+            然后执行B处的回滚逻辑，而不是执行下面的逻辑。考虑到通用性，B处的回滚逻辑包括多处数据的处理。
+	        注意这里由于有分支路径，需要避免并发。因为不排除在某些情况下，相同的两个消息由2个线程并发处理，而且2个线程走的分支不一样，比如先执行的发现amount不够需要回滚，而后执行的发现amount够了（比如之前amount被另一个线程增加了）而继续执行正常分支。这需要一把分布式锁作用在大事务上来避免并发。
 3,处理 AccountYuE 的转出部分逻辑
     先检查fromAccountYuE的amount够不够，
         够 ，则 减少fromAccountYuE 并 新建AccountYuEChangeState(fromUserId,atrId,state=didOut,atrDetailJson~)
         不够，则 不写fromAccountYuE和AccountYuEChangeState的数据。
             而是修改AccountTransferRequest的state=toRollback，并修改shuoming字段为失败原因，这里是余额不足。然后返回失败原因提示用户或者发消息通知用户。
-            然后执行B处的回滚逻辑，而不是执行下面的逻辑。考虑到通用性（以及可能的并发性--最好别并发，由于前面描述在重试时可能走不同分支），B处的回滚逻辑包括多处数据的处理。
+            然后执行B处的回滚逻辑，而不是执行下面的逻辑。考虑到通用性，B处的回滚逻辑包括多处数据的处理。
+	        注意这里由于有分支路径，需要避免并发。
 4,处理 AccountJiFen 的转入部分逻辑。在事务中 增加toAccountJiFen 并 新建AccountJiFenChangeState(toUserId,atrId,state=didIn,atrDetailJsonStr~)
-    此处不会出现业务逻辑问题而需要回滚，可以设想对应系统停机维护，此时出网络错不应该回滚。所以只需一直重试直到成功即可，当然重试机制需要细化考虑，比如发延时消息到队列。注意重试时需要幂等保证。
+    此处不会出现业务逻辑问题而需要回滚，可以设想对应系统停机维护，此时出网络错不应该回滚。所以只需一直重试直到成功即可，当然重试机制需要细化考虑。
 5,处理 AccountYuE 的转入部分逻辑。在事务中 增加toAccountYuE 并 新建AccountYuEChangeState(toUserId,atrId,state=didIn,atrDetailJsonStr~)
-    此处不会出现业务逻辑问题而需要回滚，可以设想对应系统停机维护，此时出网络错不应该回滚。所以只需一直重试直到成功即可，当然重试机制需要细化考虑，比如发延时消息到队列。注意重试时需要幂等保证。
+    此处不会出现业务逻辑问题而需要回滚，可以设想对应系统停机维护，此时出网络错不应该回滚。所以只需一直重试直到成功即可，当然重试机制需要细化考虑。
 6,修改转账请求AccountTransferRequest的 state=finish
 7,有无必要修改4个AccountChangeState的state=finish，待定，暂不考虑
 ----
@@ -207,7 +216,7 @@ B 回滚逻辑
     由于可以拿到具体的id，所以先分2种情况，一种是完全新增，此时对应上面的步骤，简单。
     一种是某个步骤失败后，通过某种方式重启这个转账流程，在下面讨论。
 
-0C,先加一个分布式锁，利用Redisson，以atrId为key。这样可以防止意外的并发执行。
+0C,先加一个分布式锁，利用Redisson，以atrId为key。这样可以防止意外的并发执行。至于为何要避免并发在前面有地方分析过。
 1C,使用atrId查询AccountTransferRequest记录，
     如果不存在，说明第1步就没成功，可以以全新方式重做上面的1--6步。暂不考虑已经返回错误信息给用户，由用户决定，而不用做任何动作的情况。
     如果存在，看AccountTransferRequest记录内容，
@@ -217,13 +226,15 @@ B 回滚逻辑
         如果state=Init，说明至少第1步已经完成，由第2步来检查处理，见2C.
         如果state=其他，按业务逻辑分析不应该出现，给开发人员报错提醒是bug。
 2C, 使用atrId和idForPart=fromUserId查询AccountJiFenChangeState记录，
-    如果不存在，说明第2步尚未开始或未能成功开始，简单做2--6步。（这里有可能之前是第2步检查失败，但是未能修改AccountTransferRequest记录状态，但这没关系，因为是幂等操作，而且就算以前失败，现在可以成功，也没问题。既然这样，最好还是禁掉可能的并发，严格按顺序来减少出错的可能性。另外还有一种并发，即同一个AccountTransferRequest的消息有多个而被多个线程同时处理，而且消息的类型不一样......比如本该rollback，但是再次检查时又通过了，此时到底是回滚还是该成功呢......待分析TODO，这应该限制这样的消息只能一个一个处理，比如都进入同一个消息子队列）
+    如果不存在，说明第2步尚未开始或未能成功开始，简单做2--6步。
+        这里有可能之前是第2步检查失败，但是未能修改AccountTransferRequest记录状态。注意可能出现以前检查失败，现在检查可以成功的情况。虽然单独做没有问题，但是并发做则有隐患，需要防止并发。
     如果存在，看AccountJiFenChangeState记录内容，
         如果state=didOut，说明第2步已经成功完成，由第3步来检查处理，见3C.
         如果state=didRollback,说明应该回滚了，转入 B 回滚逻辑 的处理流程
         如果state=其他，按业务逻辑分析不应该出现，给开发人员报错提醒是bug。
 3C, 使用atrId和idForPart=fromUserId查询AccountYuEChangeState记录，
-    如果不存在，说明第3步尚未开始或未能成功开始，简单做3--6步。（这里有可能之前是第3步检查失败，但是未能修改AccountTransferRequest记录状态，但这没关系，因为是幂等操作，而且就算以前失败，现在可以成功，也没问题。既然这样，最好还是禁掉可能的并发，严格按顺序来减少出错的可能性。另外还有一种并发，即同一个AccountTransferRequest的消息有多个而被多个线程同时处理，而且消息的类型不一样......比如本该rollback，但是再次检查时又通过了，此时到底是回滚还是该成功呢......待分析TODO，这应该限制这样的消息只能一个一个处理，比如都进入同一个消息子队列）
+    如果不存在，说明第3步尚未开始或未能成功开始，简单做3--6步。
+        这里有可能之前是第3步检查失败，但是未能修改AccountTransferRequest记录状态。注意可能出现以前检查失败，现在检查可以成功的情况。虽然单独做没有问题，但是并发做则有隐患，需要防止并发。
     如果存在，看AccountYuEChangeState记录内容，
         如果state=didOut，说明第3步已经成功完成，由第4步来检查处理，见4C.
         如果state=didRollback,说明应该回滚了，转入 B 回滚逻辑 的处理流程
