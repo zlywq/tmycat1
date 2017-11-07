@@ -183,7 +183,8 @@
 这里也给出本人对前面的2个例子的具体代码实现，在 https://github.com/zlywq/tmycat1 。
 
 
-
+觉得有用请打个赏吧
+![觉得有用请打个赏吧](http://jianpuapk.oss-cn-hangzhou.aliyuncs.com/my/weixinPayQRcodeZlywq.png)
 
 
 
