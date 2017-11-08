@@ -1,9 +1,11 @@
 package g1;
 
-import static g1.app.AppP5DistributedTran.*;
-import g1.app.*;
+import static g1.service.P5DistributedTranService.*;
+
+import g1.app.AppP5DistributedTran;
 import g1.ibatisMapper.*;
 import g1.pojo.*;
+import g1.service.P5DistributedTranService;
 import g1.tool.Tool;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -14,8 +16,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.junit4.SpringRunner;
 import sprbtapp.JustApplication1;
 
-import static g1.app.AppP5DistributedTran.InitAmount_JiFen;
-import static g1.app.AppP5DistributedTran.InitAmount_YuE;
+import static g1.service.P5DistributedTranService.InitAmount_JiFen;
+import static g1.service.P5DistributedTranService.InitAmount_YuE;
 
 @RunWith(SpringRunner.class)
 @SpringBootTest(classes = {JustApplication1.class})
@@ -25,6 +27,8 @@ public class TstP5DistributedTran {
 
     final Logger logger             = LoggerFactory.getLogger(getClass());
 
+    @Autowired
+    P5DistributedTranService p5DistributedTranService;
     @Autowired
     AppP5DistributedTran appP5DistributedTran;
 
@@ -49,7 +53,7 @@ public class TstP5DistributedTran {
         StructIdsTransfer idsObj = StructIdsTransfer.generate();
         long fromUserId = idsObj.fromUserId;
         long toUserId = idsObj.toUserId;
-        appP5DistributedTran.initUserAccount(fromUserId,toUserId,InitAmount_YuE,InitAmount_JiFen);
+        p5DistributedTranService.initUserAccount(fromUserId,toUserId,InitAmount_YuE,InitAmount_JiFen);
         long transferAmountYuE = InitAmount_YuE / 10;
         long transferAmountJiFen = InitAmount_JiFen / 10;
 
